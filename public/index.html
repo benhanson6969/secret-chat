@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Secret Code Chat</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+:root{
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#252836;--border:#2e3248;
+  --accent:#6c63ff;--accent2:#4ade80;--danger:#f87171;
+  --text:#e2e8f0;--text2:#94a3b8;--admin:#fbbf24;--voice:#22d3ee;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100dvh;display:flex;flex-direction:column;overflow:hidden;}
+
+.screen{display:none;flex-direction:column;height:100dvh;}
+.screen.active{display:flex;}
+
+/* Welcome */
+#screen-welcome{align-items:center;justify-content:center;padding:2rem;gap:2rem;}
+.logo{text-align:center;}
+.logo .icon{font-size:3rem;}
+.logo h1{font-size:1.8rem;font-weight:700;letter-spacing:-0.5px;margin-top:.5rem;}
+.logo p{color:var(--text2);font-size:.95rem;margin-top:.4rem;}
+.role-cards{display:grid;grid-template-columns:1fr 1fr;gap:1rem;width:100%;max-width:480px;}
+.role-card{background:var(--bg2);border:1.5px solid var(--border);border-radius:16px;padding:1.5rem 1rem;text-align:center;cursor:pointer;transition:border-color .2s,transform .15s;}
+.role-card:hover{border-color:var(--accent);transform:translateY(-2px);}
+.role-card .rc-icon{font-size:2rem;margin-bottom:.6rem;}
+.role-card h2{font-size:1.1rem;font-weight:600;}
+.role-card p{font-size:.82rem;color:var(--text2);margin-top:.3rem;}
+.role-card.admin{border-color:rgba(251,191,36,.3);}
+.role-card.admin:hover{border-color:var(--admin);}
+
+/* Forms */
+#screen-admin-setup,#screen-user-join{align-items:center;justify-content:center;padding:2rem;}
+.form-card{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:2rem;width:100%;max-width:420px;}
+.form-card h2{font-size:1.3rem;font-weight:700;margin-bottom:.4rem;}
+.form-card p{color:var(--text2);font-size:.88rem;margin-bottom:1.5rem;}
+.field{margin-bottom:1rem;}
+.field label{display:block;font-size:.82rem;color:var(--text2);margin-bottom:.4rem;font-weight:500;}
+.field input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:1rem;padding:.7rem 1rem;outline:none;transition:border-color .2s;}
+.field input:focus{border-color:var(--accent);}
+.field input::placeholder{color:var(--text2);opacity:.6;}
+.code-input{font-family:'Courier New',monospace!important;font-size:1.4rem!important;letter-spacing:.3em;text-align:center;text-transform:uppercase;}
+.btn{width:100%;padding:.8rem;border-radius:10px;border:none;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity .2s,transform .1s;margin-top:.5rem;}
+.btn:active{transform:scale(.98);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.88;}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border);margin-top:.6rem;}
+.btn-danger{background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.3);}
+.error-msg{color:var(--danger);font-size:.85rem;margin-top:.6rem;text-align:center;min-height:1.2em;}
+
+/* Chat layout */
+#screen-chat{flex-direction:column;}
+.chat-header{background:var(--bg2);border-bottom:1px solid var(--border);padding:.8rem 1rem;display:flex;align-items:center;gap:.8rem;flex-shrink:0;}
+.chat-header .ch-info{flex:1;min-width:0;}
+.chat-header h2{font-size:1rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chat-header .ch-meta{font-size:.78rem;color:var(--text2);}
+.members-badge{background:rgba(108,99,255,.15);color:var(--accent);border-radius:20px;font-size:.78rem;font-weight:600;padding:3px 10px;flex-shrink:0;cursor:pointer;}
+.btn-sm{padding:.4rem .8rem;border-radius:8px;border:none;font-size:.82rem;font-weight:600;cursor:pointer;transition:background .15s;}
+
+/* Admin bar */
+.admin-bar{background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.15);padding:.5rem 1rem;display:flex;gap:.5rem;align-items:center;flex-shrink:0;}
+.admin-bar span{font-size:.78rem;color:var(--admin);font-weight:600;margin-right:auto;}
+.admin-bar input{flex:1;max-width:240px;background:var(--bg3);border:1px solid rgba(251,191,36,.2);border-radius:8px;color:var(--text);font-size:.85rem;padding:.4rem .7rem;outline:none;}
+.admin-bar input:focus{border-color:var(--admin);}
+
+/* Body area: voice panel + messages */
+.chat-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* Voice panel */
+.voice-panel{background:var(--bg2);border-bottom:1px solid var(--border);padding:.75rem 1rem;flex-shrink:0;}
+.voice-panel-header{display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem;}
+.voice-panel-header .vp-title{font-size:.8rem;font-weight:600;color:var(--voice);flex:1;}
+.voice-btn{padding:.4rem .9rem;border-radius:20px;border:none;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;}
+.voice-btn.join-voice{background:rgba(34,211,238,.15);color:var(--voice);border:1px solid rgba(34,211,238,.3);}
+.voice-btn.join-voice:hover{background:rgba(34,211,238,.25);}
+.voice-btn.leave-voice{background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.3);}
+.voice-btn.mute-btn{background:var(--bg3);color:var(--text);border:1px solid var(--border);margin-left:.3rem;}
+.voice-btn.muted{background:rgba(248,113,113,.1);color:var(--danger);border-color:rgba(248,113,113,.3);}
+.voice-users{display:flex;flex-wrap:wrap;gap:.5rem;}
+.voice-avatar{display:flex;align-items:center;gap:.4rem;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:.25rem .65rem;font-size:.78rem;transition:border-color .2s;}
+.voice-avatar.speaking{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(74,222,128,.2);}
+.voice-avatar .va-dot{width:7px;height:7px;border-radius:50%;background:var(--text2);flex-shrink:0;}
+.voice-avatar.speaking .va-dot{background:var(--accent2);}
+.voice-avatar.muted-av .va-dot{background:var(--danger);}
+
+/* Messages */
+.messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.3rem;}
+.messages::-webkit-scrollbar{width:4px;}
+.messages::-webkit-scrollbar-track{background:transparent;}
+.messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+.msg-wrap{display:flex;flex-direction:column;gap:2px;}
+.msg-wrap.mine{align-items:flex-end;}
+.msg-wrap.others{align-items:flex-start;}
+.msg{max-width:78%;padding:.55rem .85rem;border-radius:14px;font-size:.93rem;line-height:1.5;word-break:break-word;}
+.msg.mine{background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
+.msg.others{background:var(--bg3);border-bottom-left-radius:4px;}
+.msg.admin-msg{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);}
+.msg-meta{font-size:.72rem;color:var(--text2);display:flex;gap:6px;align-items:center;padding:0 4px;}
+.msg-meta .name{font-weight:600;color:var(--text);}
+.msg-meta .name.is-admin{color:var(--admin);}
+.system-msg{text-align:center;font-size:.78rem;color:#475569;padding:.3rem 0;}
+.system-msg.announcement{color:var(--accent2);font-weight:500;font-size:.85rem;}
+
+/* Input */
+.input-bar{background:var(--bg2);border-top:1px solid var(--border);padding:.75rem 1rem;display:flex;gap:.6rem;align-items:center;flex-shrink:0;}
+.input-bar input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:24px;color:var(--text);font-size:.95rem;padding:.6rem 1rem;outline:none;transition:border-color .2s;}
+.input-bar input:focus{border-color:var(--accent);}
+.input-bar input::placeholder{color:var(--text2);opacity:.6;}
+.send-btn{width:40px;height:40px;background:var(--accent);border:none;border-radius:50%;color:#fff;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .2s;}
+.send-btn:hover{opacity:.85;}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);align-items:center;justify-content:center;z-index:100;padding:1rem;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:1.5rem;max-width:380px;width:100%;}
+.modal h3{margin-bottom:1rem;font-size:1.1rem;}
+.code-display{background:var(--bg3);border:2px dashed var(--accent);border-radius:12px;padding:1rem;text-align:center;margin:1rem 0;}
+.code-display .code-val{font-family:'Courier New',monospace;font-size:2rem;font-weight:700;letter-spacing:.3em;color:var(--accent);}
+.code-display p{font-size:.8rem;color:var(--text2);margin-top:.4rem;}
+
+/* Members modal */
+.member-list{display:flex;flex-direction:column;gap:.4rem;max-height:220px;overflow-y:auto;}
+.member-item{display:flex;align-items:center;gap:.6rem;padding:.4rem .6rem;background:var(--bg3);border-radius:8px;font-size:.88rem;}
+.member-item .role-badge{font-size:.7rem;padding:1px 6px;border-radius:10px;background:rgba(251,191,36,.15);color:var(--admin);}
+.member-item .role-badge.user{background:rgba(108,99,255,.15);color:var(--accent);}
+
+@media(max-width:480px){.role-cards{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<!-- Screen: Welcome -->
+<div id="screen-welcome" class="screen active">
+  <div class="logo">
+    <div class="icon">🔐</div>
+    <h1>Secret Code Chat</h1>
+    <p>Private channels with voice & text</p>
+  </div>
+  <div class="role-cards">
+    <div class="role-card admin" onclick="showScreen('admin-setup')">
+      <div class="rc-icon">👑</div>
+      <h2>Admin</h2>
+      <p>Create a channel & set the secret code</p>
+    </div>
+    <div class="role-card" onclick="showScreen('user-join')">
+      <div class="rc-icon">💬</div>
+      <h2>User</h2>
+      <p>Join with the secret code</p>
+    </div>
+  </div>
+</div>
+
+<!-- Screen: Admin setup -->
+<div id="screen-admin-setup" class="screen">
+  <div class="form-card">
+    <h2>👑 Create Channel</h2>
+    <p>Set your name, channel name, and a secret code that users must enter to join.</p>
+    <div class="field"><label>Your name (admin)</label><input type="text" id="admin-name" placeholder="e.g. Alpha" maxlength="24"/></div>
+    <div class="field"><label>Channel name</label><input type="text" id="admin-channel-name" placeholder="e.g. Team Alpha" maxlength="32"/></div>
+    <div class="field"><label>Secret code</label><input type="text" id="admin-code" class="code-input" placeholder="WOLF99" maxlength="12"/></div>
+    <div class="error-msg" id="admin-error"></div>
+    <button class="btn btn-primary" onclick="adminCreate()">🚀 Create Channel</button>
+    <button class="btn btn-secondary" onclick="showScreen('welcome')">← Back</button>
+  </div>
+</div>
+
+<!-- Screen: User join -->
+<div id="screen-user-join" class="screen">
+  <div class="form-card">
+    <h2>💬 Join Channel</h2>
+    <p>Enter the secret code the admin gave you and pick a display name.</p>
+    <div class="field"><label>Your display name</label><input type="text" id="user-name" placeholder="e.g. Ghost" maxlength="24"/></div>
+    <div class="field"><label>Secret code</label><input type="text" id="user-code" class="code-input" placeholder="enter code" maxlength="12"/></div>
+    <div class="error-msg" id="user-error"></div>
+    <button class="btn btn-primary" onclick="userJoin()">🔓 Join Channel</button>
+    <button class="btn btn-secondary" onclick="showScreen('welcome')">← Back</button>
+  </div>
+</div>
+
+<!-- Screen: Chat -->
+<div id="screen-chat" class="screen">
+  <div class="chat-header">
+    <div class="ch-info">
+      <h2 id="chat-channel-name">Channel</h2>
+      <div class="ch-meta" id="chat-channel-meta"></div>
+    </div>
+    <span class="members-badge" id="members-count" onclick="showMembersModal()">1 online</span>
+    <button class="btn-sm" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);" onclick="showCodeModal()">🔑</button>
+  </div>
+
+  <div class="admin-bar" id="admin-bar" style="display:none;">
+    <span>👑 Admin</span>
+    <input type="text" id="announce-text" placeholder="Broadcast announcement..." maxlength="200"/>
+    <button class="btn-sm" style="background:rgba(74,222,128,.15);color:var(--accent2);border:1px solid rgba(74,222,128,.25);" onclick="sendAnnouncement()">📢</button>
+    <button class="btn-sm" style="background:rgba(248,113,113,.1);color:var(--danger);border:1px solid rgba(248,113,113,.25);" onclick="closeChannel()">✕ Close</button>
+  </div>
+
+  <div class="chat-body">
+    <!-- Voice panel -->
+    <div class="voice-panel" id="voice-panel">
+      <div class="voice-panel-header">
+        <span class="vp-title">🎙️ Voice Channel</span>
+        <span id="voice-controls">
+          <button class="voice-btn join-voice" onclick="joinVoice()">Join Voice</button>
+        </span>
+      </div>
+      <div class="voice-users" id="voice-users">
+        <span style="font-size:.78rem;color:var(--text2);">No one in voice yet</span>
+      </div>
+    </div>
+
+    <div class="messages" id="messages"></div>
+  </div>
+
+  <div class="input-bar">
+    <input type="text" id="msg-input" placeholder="Type a message..." maxlength="500" onkeydown="if(event.key==='Enter')sendMessage()"/>
+    <button class="send-btn" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<!-- Code modal -->
+<div class="modal-overlay" id="modal-code">
+  <div class="modal">
+    <h3>🔑 Secret Code</h3>
+    <div class="code-display">
+      <div class="code-val" id="modal-code-val"></div>
+      <p>Share this with people you want to invite</p>
+    </div>
+    <button class="btn btn-secondary" style="margin-top:.5rem;" onclick="copyCode()">📋 Copy Code</button>
+    <button class="btn btn-secondary" onclick="closeModal('modal-code')">Close</button>
+  </div>
+</div>
+
+<!-- Members modal -->
+<div class="modal-overlay" id="modal-members">
+  <div class="modal">
+    <h3>👥 Online Members</h3>
+    <div class="member-list" id="member-list"></div>
+    <button class="btn btn-secondary" style="margin-top:1rem;" onclick="closeModal('modal-members')">Close</button>
+  </div>
+</div>
+
+<!-- Hidden audio elements for remote streams -->
+<div id="audio-container" style="display:none;"></div>
+
+<script>
+// ══════════ STATE ══════════
+const socket = io();
+let myRole = null, myCode = null, myUsername = null;
+let membersData = [];
+
+// ══════════ WebRTC voice ══════════
+let localStream = null;
+let peerConnections = {}; // peerId → RTCPeerConnection
+let inVoice = false;
+let muted = false;
+const ICE_SERVERS = { iceServers: [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }
+]};
+
+async function joinVoice() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch(e) {
+    alert('Microphone access denied. Please allow microphone in your browser settings.');
+    return;
+  }
+  inVoice = true;
+  document.getElementById('voice-controls').innerHTML =
+    `<button class="voice-btn mute-btn" id="mute-btn" onclick="toggleMute()">🎙️ Mute</button>
+     <button class="voice-btn leave-voice" onclick="leaveVoice()">Leave Voice</button>`;
+
+  socket.emit('voice:join', {}, ({ ok, peers }) => {
+    if (!ok) return;
+    // Create offers to all existing peers
+    peers.forEach(peerId => createOffer(peerId));
+  });
+}
+
+function leaveVoice() {
+  if (!inVoice) return;
+  inVoice = false;
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  Object.keys(peerConnections).forEach(id => { peerConnections[id].close(); delete peerConnections[id]; });
+  document.querySelectorAll('.remote-audio').forEach(a => a.remove());
+  socket.emit('voice:leave');
+  document.getElementById('voice-controls').innerHTML =
+    `<button class="voice-btn join-voice" onclick="joinVoice()">Join Voice</button>`;
+}
+
+function toggleMute() {
+  if (!localStream) return;
+  muted = !muted;
+  localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+  const btn = document.getElementById('mute-btn');
+  if (btn) { btn.textContent = muted ? '🔇 Unmute' : '🎙️ Mute'; btn.className = 'voice-btn mute-btn' + (muted ? ' muted' : ''); }
+}
+
+function getPeer(peerId) {
+  if (peerConnections[peerId]) return peerConnections[peerId];
+  const pc = new RTCPeerConnection(ICE_SERVERS);
+  peerConnections[peerId] = pc;
+  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  pc.onicecandidate = ({ candidate }) => {
+    if (candidate) socket.emit('voice:ice', { targetId: peerId, candidate });
+  };
+  pc.ontrack = ({ streams }) => {
+    const audio = document.createElement('audio');
+    audio.autoplay = true;
+    audio.className = 'remote-audio';
+    audio.dataset.peer = peerId;
+    audio.srcObject = streams[0];
+    document.getElementById('audio-container').appendChild(audio);
+  };
+  return pc;
+}
+
+async function createOffer(peerId) {
+  const pc = getPeer(peerId);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  socket.emit('voice:offer', { targetId: peerId, offer });
+}
+
+// ── Voice signalling events ──
+socket.on('voice:new-peer', async ({ fromId }) => {
+  if (!inVoice) return;
+  // Wait a moment for them to set up, then they'll send us an offer
+});
+
+socket.on('voice:offer', async ({ fromId, offer }) => {
+  if (!inVoice) return;
+  const pc = getPeer(fromId);
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  socket.emit('voice:answer', { targetId: fromId, answer });
+});
+
+socket.on('voice:answer', async ({ fromId, answer }) => {
+  const pc = peerConnections[fromId];
+  if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+});
+
+socket.on('voice:ice', async ({ fromId, candidate }) => {
+  const pc = peerConnections[fromId];
+  if (pc) try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) {}
+});
+
+socket.on('voice:peer-left', ({ fromId }) => {
+  if (peerConnections[fromId]) { peerConnections[fromId].close(); delete peerConnections[fromId]; }
+  const audio = document.querySelector(`audio[data-peer="${fromId}"]`);
+  if (audio) audio.remove();
+});
+
+socket.on('voice:users', (users) => {
+  const container = document.getElementById('voice-users');
+  if (users.length === 0) {
+    container.innerHTML = '<span style="font-size:.78rem;color:var(--text2);">No one in voice yet</span>';
+    return;
+  }
+  container.innerHTML = users.map(u =>
+    `<div class="voice-avatar" id="vav-${u.id}">
+      <div class="va-dot"></div>
+      <span>${u.username}</span>
+    </div>`
+  ).join('');
+});
+
+// ══════════ SCREENS ══════════
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+// ══════════ ADMIN ══════════
+function adminCreate() {
+  const adminName = document.getElementById('admin-name').value.trim();
+  const channelName = document.getElementById('admin-channel-name').value.trim();
+  const secretCode = document.getElementById('admin-code').value.trim().toUpperCase();
+  const err = document.getElementById('admin-error');
+  if (!adminName || !channelName || !secretCode) return err.textContent = 'Please fill in all fields.';
+  if (secretCode.length < 4) return err.textContent = 'Code must be at least 4 characters.';
+  err.textContent = '';
+  socket.emit('admin:create-channel', { channelName, secretCode, adminName }, res => {
+    if (!res.ok) return err.textContent = res.error;
+    myRole = 'admin'; myCode = secretCode; myUsername = adminName;
+    enterChat({ name: channelName, code: secretCode, createdBy: adminName }, []);
+  });
+}
+
+// ══════════ USER ══════════
+function userJoin() {
+  const username = document.getElementById('user-name').value.trim();
+  const secretCode = document.getElementById('user-code').value.trim().toUpperCase();
+  const err = document.getElementById('user-error');
+  if (!username || !secretCode) return err.textContent = 'Please fill in all fields.';
+  err.textContent = '';
+  socket.emit('user:join-channel', { secretCode, username }, res => {
+    if (!res.ok) return err.textContent = res.error;
+    myRole = 'user'; myCode = secretCode; myUsername = username;
+    enterChat(res.channel, res.history);
+  });
+}
+
+// ══════════ ENTER CHAT ══════════
+function enterChat(channel, history) {
+  document.getElementById('chat-channel-name').textContent = '#' + channel.name;
+  document.getElementById('chat-channel-meta').textContent = myRole === 'admin' ? 'You are the admin' : `Created by ${channel.createdBy}`;
+  document.getElementById('modal-code-val').textContent = myCode;
+  if (myRole === 'admin') document.getElementById('admin-bar').style.display = 'flex';
+  document.getElementById('messages').innerHTML = '';
+  history.forEach(m => m.username === '__system__' ? appendSystem(m.text, m.isAnnouncement) : appendMessage(m));
+  showScreen('chat');
+  document.getElementById('msg-input').focus();
+}
+
+// ══════════ MESSAGING ══════════
+function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  socket.emit('chat:message', { text });
+}
+
+function appendMessage(msg) {
+  const isMine = msg.username === myUsername;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap ' + (isMine ? 'mine' : 'others');
+  if (!isMine) {
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'name' + (msg.role === 'admin' ? ' is-admin' : '');
+    nameEl.textContent = msg.role === 'admin' ? '👑 ' + msg.username : msg.username;
+    meta.appendChild(nameEl);
+    meta.appendChild(Object.assign(document.createElement('span'), { textContent: fmtTime(msg.ts) }));
+    wrap.appendChild(meta);
+  }
+  const bubble = document.createElement('div');
+  bubble.className = 'msg ' + (isMine ? 'mine' : (msg.role === 'admin' ? 'admin-msg others' : 'others'));
+  bubble.textContent = msg.text;
+  wrap.appendChild(bubble);
+  if (isMine) {
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.appendChild(Object.assign(document.createElement('span'), { textContent: fmtTime(msg.ts) }));
+    wrap.appendChild(meta);
+  }
+  document.getElementById('messages').appendChild(wrap);
+  scrollBottom();
+}
+
+function appendSystem(text, isAnnouncement) {
+  const el = document.createElement('div');
+  el.className = 'system-msg' + (isAnnouncement ? ' announcement' : '');
+  el.textContent = text;
+  document.getElementById('messages').appendChild(el);
+  scrollBottom();
+}
+
+function scrollBottom() { const m = document.getElementById('messages'); m.scrollTop = m.scrollHeight; }
+function fmtTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+
+// ══════════ ADMIN TOOLS ══════════
+function sendAnnouncement() {
+  const input = document.getElementById('announce-text');
+  const text = input.value.trim();
+  if (!text) return;
+  socket.emit('admin:announce', { text });
+  input.value = '';
+}
+function closeChannel() {
+  if (!confirm('Close this channel for everyone?')) return;
+  socket.emit('admin:close-channel', {}, () => { leaveVoice(); location.reload(); });
+}
+
+// ══════════ MODALS ══════════
+function showCodeModal() { document.getElementById('modal-code').classList.add('open'); }
+function showMembersModal() {
+  const list = document.getElementById('member-list');
+  list.innerHTML = membersData.map(m =>
+    `<div class="member-item">
+      <span>${m.role === 'admin' ? '👑' : '👤'}</span>
+      <span style="flex:1;">${m.username}</span>
+      <span class="role-badge ${m.role}">${m.role}</span>
+    </div>`
+  ).join('') || '<span style="color:var(--text2);font-size:.85rem;">No members</span>';
+  document.getElementById('modal-members').classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function copyCode() {
+  navigator.clipboard.writeText(myCode).then(() => {
+    const btn = event.target; btn.textContent = '✅ Copied!';
+    setTimeout(() => btn.textContent = '📋 Copy Code', 1500);
+  });
+}
+
+// ══════════ SOCKET EVENTS ══════════
+socket.on('channel:members', ({ count, users }) => {
+  membersData = users;
+  document.getElementById('members-count').textContent = count + ' online';
+});
+socket.on('chat:message', msg => appendMessage(msg));
+socket.on('chat:system', data => appendSystem(data.text, data.isAnnouncement));
+socket.on('channel:closed', data => {
+  appendSystem('⚠️ ' + data.message);
+  setTimeout(() => { leaveVoice(); alert(data.message); location.reload(); }, 1500);
+});
+</script>
+</body>
+</html>
